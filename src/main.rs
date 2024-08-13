@@ -21,6 +21,8 @@ use stream::LogDelimiterStream;
 lazy_static::lazy_static! {
     static ref ACTION_MESSAGE_REGEX: Regex = Regex::new(r".*\[Scripting\] bds_enhancer:(?P<json>\{.*\})").unwrap();
     static ref LOG_REGEX: Regex = Regex::new(&format!(r"{} (?P<level>(INFO|WARN|ERROR))\] ", LOG_PREFIX)).unwrap();
+    static ref ON_JOIN_REGEX: Regex = Regex::new(r"Player connected: (?P<player>.+), xuid: (?P<xuid>\d+)").unwrap();
+    static ref ON_SPAWN_REGEX: Regex = Regex::new(r"Player Spawned: (?P<player>.+) xuid: (?P<xuid>\d+), pfid: (?P<pfid>.+)").unwrap();
 }
 
 fn handle_child_stdin(rx: Receiver<String>, mut child_stdin: ChildStdin) {
@@ -73,6 +75,20 @@ fn handle_action(child_stdin: &Sender<String>, action: Action) {
     }
 }
 
+fn custom_handler(log: &str, child_stdin: &Sender<String>) {
+    if let Some(caps) = ON_JOIN_REGEX.captures(log) {
+        let player = caps.name("player").unwrap().as_str();
+        let xuid = caps.name("xuid").unwrap().as_str();
+        execute_command(child_stdin, format!("scriptevent system:on_join {}|{}", player, xuid));
+
+    } else if let Some(caps) = ON_SPAWN_REGEX.captures(log) {
+        let player = caps.name("player").unwrap().as_str();
+        let xuid = caps.name("xuid").unwrap().as_str();
+        let pfid = caps.name("pfid").unwrap().as_str();
+        execute_command(child_stdin, format!("scriptevent system:on_spawn {}|{}|{}", player, xuid, pfid));
+    }
+}
+
 fn handle_child_stdout(child_stdin: Sender<String>, child_stdout: ChildStdout) {
     let logs = LogDelimiterStream::new(child_stdout);
     let mut stdout = std::io::stdout();
@@ -87,6 +103,8 @@ fn handle_child_stdout(child_stdin: Sender<String>, child_stdout: ChildStdout) {
 
         let log = log.strip_prefix("NO LOG FILE! - ").unwrap_or(&log);
         let _ = stdout.write(format!("{}{}{}\n", level.to_color(), log, Color::Reset).as_bytes());
+
+        custom_handler(log, &child_stdin);
     }
 }
 

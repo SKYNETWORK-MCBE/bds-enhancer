@@ -63,5 +63,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 
+          name: Release v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
           files: ${{ env.PROJECT_NAME }}-v${{ steps.version.outputs.version }}-${{ matrix.job.name }}${{ matrix.job.extension }}

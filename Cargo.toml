@@ -1,6 +1,6 @@
 [package]
-name = "bds_enhancer"
-version = "0.1.1"
+name = "bds-enhancer"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]

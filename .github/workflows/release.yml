@@ -3,30 +3,9 @@ name: Build and Release
 on:
   push
 
-env:
-  PROJECT_NAME: bds-enhancer
-
 jobs:
   build:
-    runs-on: ${{ matrix.job.os }}
-    strategy:
-      matrix:
-        job:
-          - {
-              os: ubuntu-latest,
-              target: x86_64-unknown-linux-gnu,
-              use-cross: false,
-              name: linux,
-              extension: "",
-            }
-          - {
-              os: windows-latest,
-              target: x86_64-pc-windows-msvc,
-              use-cross: false,
-              name: win,
-              extension: .exe,
-            }
-
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,9 +14,10 @@ jobs:
           fetch-tags: true
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: ${{ matrix.job.target }}
+        run: |
+          rustup update
+          rustup target add x86_64-unknown-linux-gnu
+          rustup target add x86_64-pc-windows-msvc
 
       - name: Read version
         id: version
@@ -50,22 +30,39 @@ jobs:
           fi
           echo "::set-output name=version::$current_version"
 
-      - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: ${{ matrix.job.use-cross }}
-          command: build
-          args: --release --target ${{ matrix.job.target }}
+      - name: Compile for linux
+        run: cross build --release --target x86_64-unknown-linux-gnu
+      
+      - name: Compile for windows
+        run: cross build --release --target x86_64-pc-windows-msvc
 
-      - name: Rename artifacts
-        run: |
-          mv target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}${{ matrix.job.extension }} ${{ env.PROJECT_NAME }}-v${{ steps.version.outputs.version }}-${{ matrix.job.name }}${{ matrix.job.extension }}
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Release v${{ steps.version.outputs.version }}
           tag_name: v${{ steps.version.outputs.version }}
-          files: ${{ env.PROJECT_NAME }}-v${{ steps.version.outputs.version }}-${{ matrix.job.name }}${{ matrix.job.extension }}
+          release_name: Release v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+      
+      - name: Upload linux asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: target/x86_64-unknown-linux-gnu/release/bds-enhancer
+          asset_name: bds-enhancer-${{ steps.version.outputs.version }}-linux
+          asset_content_type: application/octet-stream
+
+      - name: Upload windows asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: target/x86_64-pc-windows-msvc/release/bds-enhancer.exe
+          asset_name: bds-enhancer-${{ steps.version.outputs.version }}-windows.exe
+          asset_content_type: application/octet-stream

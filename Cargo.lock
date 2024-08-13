@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bds_enhanser"
+name = "bds_enhancer"
 version = "0.1.0"
 dependencies = [
  "lazy_static",

@@ -1,0 +1,67 @@
+name: Build and Release
+
+on:
+  push
+
+env:
+  PROJECT_NAME: bds-enhancer
+
+jobs:
+  build:
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      matrix:
+        job:
+          - {
+              os: ubuntu-latest,
+              target: x86_64-unknown-linux-gnu,
+              use-cross: false,
+              name: linux,
+              extension: "",
+            }
+          - {
+              os: windows-latest,
+              target: x86_64-pc-windows-msvc,
+              use-cross: false,
+              name: win,
+              extension: .exe,
+            }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.job.target }}
+
+      - name: Read version
+        id: version
+        run: |
+          previous_version=$(git describe --tags --abbrev=0)
+          current_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if [ "$previous_version" = "v$current_version" ]; then
+            echo "Error: Version has not changed since the last release."
+            exit 1
+          fi
+          echo "::set-output name=version::$current_version"
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.job.use-cross }}
+          command: build
+          args: --release --target ${{ matrix.job.target }}
+
+      - name: Rename artifacts
+        run: |
+          mv target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}${{ matrix.job.extension }} ${{ env.PROJECT_NAME }}-v${{ steps.version.outputs.version }}-${{ matrix.job.name }}${{ matrix.job.extension }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: 
+          files: ${{ env.PROJECT_NAME }}-v${{ steps.version.outputs.version }}-${{ matrix.job.name }}${{ matrix.job.extension }}

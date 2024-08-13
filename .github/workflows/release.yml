@@ -18,6 +18,9 @@ jobs:
           rustup update
           rustup target add x86_64-unknown-linux-gnu
           rustup target add x86_64-pc-windows-msvc
+      
+      - name: Install cross
+        run: cargo install cross
 
       - name: Read version
         id: version

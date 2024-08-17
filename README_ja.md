@@ -4,6 +4,11 @@
 
 BDS でプレイヤーのサーバー間転送などを可能にするための外部ソフトです。
 
+## オリジナルリポジトリ  
+[Lapis256/bds-enhancer](https://github.com/Lapis256/bds-enhancer)
+
+原作者様に深く感謝申し上げます。
+
 ## 実行方法
 
 1. [Releases](https://github.com/Lapis256/bds-enhancer/releases)より最新の`bds_enhancer.exe`をダウンロードします。

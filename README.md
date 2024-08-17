@@ -4,6 +4,11 @@
 
 This is an external software for enabling server transfers between players in BDS.
 
+## Original Repository  
+[Lapis256/bds-enhancer](https://github.com/Lapis256/bds-enhancer)
+
+We express our deepest appreciation to the original author. 　
+
 ## How to run
 
 1. Download the latest `bds_enhancer.exe` from [Releases](https://github.com/Lapis256/bds-enhancer/releases).

@@ -72,12 +72,12 @@ fn handle_action(child_stdin: &Sender<String>, action: Action, command_status: &
         Action::Reload => execute_command(child_stdin, "reload".to_string()),
         Action::Stop => execute_command(child_stdin, "stop".to_string()),
         Action::Execute(arg) => {
-            execute_command(child_stdin, arg.command.to_string());
             if arg.result {
                 command_status.waiting = true;
-                command_status.command = arg.command;
+                command_status.command = arg.command.clone();
                 command_status.scriptevent = "bds_enhancer:result".to_string();
             }
+            execute_command(child_stdin, arg.command.to_string());
         }
     }
 }
@@ -100,18 +100,23 @@ fn handle_child_stdout(
 
         let log = log.strip_prefix("NO LOG FILE! - ").unwrap_or(&log);
         if command_status.waiting {
-            let result: json::JsonValue = object! {
-                "command" => command_status.command.clone(),
-                "result_message" => log,
-            };
-            execute_command(
-                &child_stdin,
-                format!(
-                    "scriptevent {} {} ",
-                    command_status.scriptevent,
-                    result.dump()
-                ),
-            );
+            for i in 0..(log.chars().count() / 1500 + 1) {
+                let result_tmp = log.chars().skip(i * 1500).take(1500).collect::<String>();
+                let result: json::JsonValue = object! {
+                    "command" => command_status.command.clone(),
+                    "result_message" => result_tmp,
+                    "count" => i,
+                    "end" => i == log.chars().count() / 1500,
+                };
+                execute_command(
+                    &child_stdin,
+                    format!(
+                        "scriptevent {} {} ",
+                        command_status.scriptevent,
+                        result.dump()
+                    ),
+                );
+            }
             command_status.waiting = false;
         }
         let _ = stdout.write(format!("{}{}{}\n", level.to_color(), log, Color::Reset).as_bytes());

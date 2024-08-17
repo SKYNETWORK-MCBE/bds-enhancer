@@ -1,6 +1,6 @@
 [package]
 name = "bds_enhancer"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -8,6 +8,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
 lazy_static = "1.4.0"
+json = "0.12.4"
 
 [profile.release]
 lto = true

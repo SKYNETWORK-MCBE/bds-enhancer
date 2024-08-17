@@ -4,6 +4,7 @@ pub mod consts;
 pub mod log_level;
 pub mod stream;
 
+use json::{self, object};
 use regex::Regex;
 use std::env;
 use std::io::Write;
@@ -59,7 +60,7 @@ fn parse_action(log: &str) -> Option<Action> {
     serde_json::from_str(json).ok()?
 }
 
-fn handle_action(child_stdin: &Sender<String>, action: Action) {
+fn handle_action(child_stdin: &Sender<String>, action: Action, command_status: &mut CommandStatus) {
     match action {
         Action::Transfer(arg) => execute_command(
             child_stdin,
@@ -70,22 +71,49 @@ fn handle_action(child_stdin: &Sender<String>, action: Action) {
         }
         Action::Reload => execute_command(child_stdin, "reload".to_string()),
         Action::Stop => execute_command(child_stdin, "stop".to_string()),
+        Action::Execute(arg) => {
+            execute_command(child_stdin, arg.command.to_string());
+            if arg.result {
+                command_status.waiting = true;
+                command_status.command = arg.command;
+                command_status.scriptevent = "bds_enhancer:result".to_string();
+            }
+        }
     }
 }
 
-fn handle_child_stdout(child_stdin: Sender<String>, child_stdout: ChildStdout) {
+fn handle_child_stdout(
+    child_stdin: Sender<String>,
+    child_stdout: ChildStdout,
+    mut command_status: &mut CommandStatus,
+) {
     let logs = LogDelimiterStream::new(child_stdout);
     let mut stdout = std::io::stdout();
 
     for log in logs {
         if let Some(action) = parse_action(&log) {
-            handle_action(&child_stdin, action);
+            handle_action(&child_stdin, action, &mut command_status);
             continue;
         }
 
         let level = get_log_level(&log);
 
         let log = log.strip_prefix("NO LOG FILE! - ").unwrap_or(&log);
+        if command_status.waiting {
+            let result: json::JsonValue = object! {
+                "command" => command_status.command.clone(),
+                "result_message" => log,
+            };
+            execute_command(
+                &child_stdin,
+                format!(
+                    "scriptevent {} {} ",
+                    command_status.scriptevent,
+                    result.dump()
+                ),
+            );
+            command_status.waiting = false;
+        }
         let _ = stdout.write(format!("{}{}{}\n", level.to_color(), log, Color::Reset).as_bytes());
     }
 }
@@ -130,5 +158,16 @@ fn main() {
     thread::spawn(move || handle_child_stdin(rx, child_stdin));
     thread::spawn(move || handle_stdin(tx));
 
-    handle_child_stdout(tx2, stdout);
+    let mut command_status = CommandStatus {
+        waiting: false,
+        command: "".to_string(),
+        scriptevent: "".to_string(),
+    };
+    handle_child_stdout(tx2, stdout, &mut command_status);
+}
+
+struct CommandStatus {
+    waiting: bool,
+    command: String,
+    scriptevent: String,
 }

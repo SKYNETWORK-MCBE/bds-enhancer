@@ -7,6 +7,7 @@ pub enum Action {
     Stop,
     Transfer(TransferPayload),
     Kick(KickByIdPayload),
+    Execute(ExecuteCommandPayload),
 }
 
 #[derive(Debug, Deserialize)]
@@ -20,4 +21,10 @@ pub struct TransferPayload {
 pub struct KickByIdPayload {
     pub player: String,
     pub reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExecuteCommandPayload {
+    pub command: String,
+    pub result: bool,
 }

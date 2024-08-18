@@ -28,3 +28,12 @@
 ## sendReloadAction
 
 mcfunction とスクリプトを再読み込みします。
+
+## executeCommand
+
+コンソール権限で任意のコマンドを実行します。
+
+### 引数
+
+- command: string - 実行するコマンド
+- result?: boolean = false - trueの場合,結果を受け取れる

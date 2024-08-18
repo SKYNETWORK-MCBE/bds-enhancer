@@ -28,3 +28,12 @@ Stops the server.
 ## sendReloadAction
 
 Reloads mcfunction and scripts.
+
+## executeCommand
+
+Executes any command with console privileges.
+
+### Arguments
+
+- command: string - The command to execute
+- result?: boolean = false - If true, the result can be received

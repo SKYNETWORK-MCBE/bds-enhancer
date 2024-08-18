@@ -36,4 +36,16 @@ mcfunction とスクリプトを再読み込みします。
 ### 引数
 
 - command: string - 実行するコマンド
-- result?: boolean = false - trueの場合,結果を受け取れる
+- result?: boolean - `true`の場合, 結果を受け取れる
+
+## executeShellCommand
+
+任意のシェルコマンドを実行します。
+
+### Arguments
+
+- mainCommand: string - 実行ファイル
+  - ex) `git pull`を実行する場合は`"git"`を入力する
+- args?: string[] - コマンド引数
+  - ex) `git pull`を実行する場合は`["pull"]`を入力する
+- result?: boolean - `true`の場合, 結果を受け取れる

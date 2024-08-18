@@ -37,3 +37,15 @@ Executes any command with console privileges.
 
 - command: string - The command to execute
 - result?: boolean = false - If true, the result can be received
+
+## executeShellCommand
+
+Executes any shell command.
+
+### Arguments
+
+- mainCommand: string - Specify an executable file
+  - ex) Type `"git"` when you run `git pull`
+- args?: string[] - Specify command arguments
+  - ex) Type `["pull"]` when you run `git pull`
+- result?: boolean - If true, the result can be received

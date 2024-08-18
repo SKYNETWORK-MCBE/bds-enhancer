@@ -8,6 +8,7 @@ pub enum Action {
     Transfer(TransferPayload),
     Kick(KickByIdPayload),
     Execute(ExecuteCommandPayload),
+    ExecuteShell(ExecuteShellCommandPayload),
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,5 +27,12 @@ pub struct KickByIdPayload {
 #[derive(Debug, Deserialize)]
 pub struct ExecuteCommandPayload {
     pub command: String,
+    pub result: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExecuteShellCommandPayload {
+    pub main_command: String,
+    pub args: Vec<String>,
     pub result: bool,
 }

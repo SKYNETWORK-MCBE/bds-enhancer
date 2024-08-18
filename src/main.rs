@@ -81,6 +81,53 @@ fn handle_action(child_stdin: &Sender<String>, action: Action, command_status: &
             }
             execute_command(child_stdin, arg.command.to_string());
         }
+        Action::ExecuteShell(arg) => {
+            let result = execute_shell_command(&arg.main_command.clone(), arg.args.clone());
+            match result {
+                Ok(result) => {
+                    for i in 0..result.trim().chars().count() / 1500 + 1 {
+                        let result_tmp = result
+                            .trim()
+                            .chars()
+                            .skip(i * 1500)
+                            .take(1500)
+                            .collect::<String>();
+                        let result: json::JsonValue = object! {
+                            "command" => arg.main_command.clone() + " " + &arg.args.clone().join(" "),
+                            "result_message" => result_tmp.clone(),
+                            "count" => i,
+                            "end" => i == result.trim().chars().count() / 1500,
+                            "err" => false,
+                        };
+                        execute_command(
+                            child_stdin,
+                            format!(
+                                "scriptevent {} {}",
+                                "bds_enhancer:shell_result",
+                                result.dump()
+                            ),
+                        );
+                    }
+                }
+                Err(e) => {
+                    if arg.result {
+                        let return_value = object! {
+                            "command" => arg.main_command + " " + &arg.args.clone().join(" "),
+                            "result_message" => format!("Error: {}", e),
+                            "err" => true,
+                        };
+                        execute_command(
+                            child_stdin,
+                            format!(
+                                "scriptevent {} {}",
+                                "bds_enhancer:shell_result",
+                                return_value.dump()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -148,6 +195,17 @@ fn handle_child_stdout(
 
 fn execute_command(child_stdin: &Sender<String>, command: String) {
     child_stdin.send(format!("{}\n", command)).unwrap();
+}
+
+fn execute_shell_command(command: &str, args: Vec<String>) -> Result<String, std::io::Error> {
+    let output = Command::new(command).args(args).output();
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Ok(stdout.to_string());
+        }
+        Err(e) => return Err(e),
+    }
 }
 
 fn build_command(os: &str, cwd: &str) -> Command {

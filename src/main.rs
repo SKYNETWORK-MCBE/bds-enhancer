@@ -208,12 +208,12 @@ fn execute_shell_command(command: &str, args: Vec<String>) -> Result<String, std
     }
 }
 
-fn build_command(os: &str, cwd: &str) -> Command {
+fn build_command(os: &str, cwd: &str, executable_name: &str) -> Command {
     if os != "linux" && os != "windows" {
         panic!("Unsupported platform: {}", os);
     }
 
-    let mut command = Command::new(Path::new(cwd).join("bedrock_server"));
+    let mut command = Command::new(Path::new(cwd).join(executable_name));
 
     command
         .current_dir(cwd)
@@ -230,8 +230,9 @@ fn build_command(os: &str, cwd: &str) -> Command {
 fn main() {
     let os = env::consts::OS;
     let cwd = env::args().nth(1).unwrap_or(".".to_string());
+    let executable_name = env::args().nth(2).unwrap_or("bedrock_server".to_string());
 
-    let mut child = build_command(os, &cwd)
+    let mut child = build_command(os, &cwd, &executable_name)
         .spawn()
         .expect("Failed to spawn process");
 

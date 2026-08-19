@@ -163,8 +163,8 @@ BDS 1.26.44.3 の観測ログには生成列がない。そのため初期版は
 - BDSが列を出さない場合、generated line上の最初のmapped tokenを利用する。列0を仮定
   するとtsdown mapでは前行tokenを返すことが実fixtureで判明したためである。
 - mapのsource pathをpack相対で正規化し、pack外へ抜けるpathは表示しない。
-- Rust 1.85互換のため、Sentry `sourcemap`が許容する`url`を2.5.2へ固定した。新しい
-  `url`が引くICU依存はRust 1.88を要求する。
+- 実装時のRust 1.85では新しい`url`のICU依存をビルドできなかったため、一時的に
+  `url` 2.5.2へ固定した。その後Rustを1.97.1へ更新し、MSRVを1.88と明記して固定を撤廃した。
 - resolver全体を`catch_unwind`境界で囲った。releaseでも有効にするため既存の
   `panic = "abort"`を撤廃した。
 - 2026-08-19: 実際のtsdown watch mapをfixture化したテストを含む15テストを追加。
@@ -224,5 +224,6 @@ BDS 1.26.44.3 の観測ログには生成列がない。そのため初期版は
 - `cargo test`: 24件成功。
 - `cargo clippy --all-targets -- -D warnings`: 成功（allowなし）。
 - `cargo build --release`: 成功。
+- Rust 1.97.1への更新後、`rust-version = "1.88"`を追加し、互換用の`url`直接固定を削除した。
 - 仕上げ後の表示調整として、解決済みframeの生成JS位置だけANSI dimを適用した。
   `\x1b[22m`でintensityのみ戻すため、ERRORの赤色は維持する。未解決frameは装飾しない。

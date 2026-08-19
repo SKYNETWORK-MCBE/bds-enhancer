@@ -2,6 +2,7 @@
 name = "bds_enhancer"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.88"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -10,9 +11,6 @@ regex = "1"
 lazy_static = "1.4.0"
 json = "0.12.4"
 sourcemap = "9.3.2"
-# sourcemap accepts url >=2.1.1, but newer url releases pull ICU crates that
-# require a newer Rust compiler than this project currently uses (1.85).
-url = "=2.5.2"
 
 [profile.release]
 lto = true

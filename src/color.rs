@@ -1,5 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
+pub const ANSI_DIM: &str = "\x1b[2m";
+pub const ANSI_NORMAL_INTENSITY: &str = "\x1b[22m";
+
 pub enum Color {
     Red,
     Yellow,

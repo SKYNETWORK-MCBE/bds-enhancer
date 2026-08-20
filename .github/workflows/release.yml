@@ -1,84 +1,137 @@
 name: Release
 
-permissions:
-  contents: write
-
 on:
   push:
     tags:
-      - v*
+      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Release binary
+    name: Build (${{ matrix.target }})
+
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            glibc: 2.17
+            glibc: "2.17"
             extension: ""
-          #   - os: ubuntu-latest
-          #     target: aarch64-unknown-linux-gnu
-          #     glibc: 2.17
-          #     extension: ""
-          #   - os: macos-latest
-          #     target: x86_64-apple-darwin
-          #     glibc: -1
-          #     extension: ""
-          #   - os: macos-latest
-          #     target: aarch64-apple-darwin
-          #     glibc: -1
-          #     extension: ""
+
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          #   glibc: "2.17"
+          #   extension: ""
+
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   glibc: ""
+          #   extension: ""
+
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   glibc: ""
+          #   extension: ""
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            glibc: -1
-            extension: .exe
+            glibc: ""
+            extension: ".exe"
 
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7.0.1
 
-      # Rustのpackage名を取得して環境変数に入れておく。(後のステップで使用)
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
       - name: Extract crate information
         shell: bash
         run: |
-          echo "PROJECT_NAME=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)" >> $GITHUB_ENV
+          PROJECT_NAME="$(cargo metadata --no-deps --format-version 1 \
+            | python -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["name"])')"
 
-      # zigをインストール
+          echo "PROJECT_NAME=$PROJECT_NAME" >> "$GITHUB_ENV"
+
       - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
-
-      # rustをインストール
-      - name: Install Rust toolchain
-        uses: moonrepo/setup-rust@v1
+        if: matrix.glibc != ''
+        uses: mlugg/setup-zig@v2.2.1
         with:
-          targets: ${{ matrix.target }}
-          bins: cargo-zigbuild
+          version: 0.16.0
 
-      # ビルド
-      - name: Build with glibc version
-        if: matrix.glibc != -1
-        run: |
-          cargo zigbuild --release --target ${{ matrix.target }}.${{ matrix.glibc }}
+      - name: Install cargo-zigbuild
+        if: matrix.glibc != ''
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.22.3
+          fallback: none
 
-      - name: Build without glibc version
-        if: matrix.glibc == -1
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-
-      # ビルド済みバイナリをリネーム
-      - name: Rename artifacts
+      - name: Build with Zig
+        if: matrix.glibc != ''
         shell: bash
         run: |
-          mv target/${{ matrix.target }}/release/${{ env.PROJECT_NAME }}{,-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.extension }}}
+          cargo zigbuild \
+            --locked \
+            --release \
+            --target "${{ matrix.target }}.${{ matrix.glibc }}"
 
-      # ビルド済みバイナリをReleasesに配置
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        if: matrix.glibc == ''
+        shell: bash
+        run: |
+          cargo build \
+            --locked \
+            --release \
+            --target "${{ matrix.target }}"
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+
+          mv \
+            "target/${{ matrix.target }}/release/${PROJECT_NAME}${{ matrix.extension }}" \
+            "dist/${PROJECT_NAME}-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.extension }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7.0.1
         with:
-          files: |
-            target/${{ matrix.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.extension }}
+          name: release-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create release
+
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            dist/* \
+            --verify-tag \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

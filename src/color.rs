@@ -7,6 +7,7 @@ pub enum Color {
     Red,
     Yellow,
     White,
+    Green,
     Reset,
 }
 
@@ -16,6 +17,7 @@ impl Color {
             Color::Red => "\x1b[91m",
             Color::Yellow => "\x1b[93m",
             Color::White => "\x1b[97m",
+            Color::Green => "\x1b[92m",
             Color::Reset => "\x1b[0m",
         }
     }

@@ -263,11 +263,23 @@ fn build_command(os: &str, cwd: &str, executable_name: &str) -> Command {
 }
 
 fn main() {
+    println!(
+        "{}[bds-enhancer]{} bds-enhancer v{}",
+        Color::Green,
+        Color::Reset,
+        env!("CARGO_PKG_VERSION")
+    );
     let os = env::consts::OS;
     let cwd = env::args().nth(1).unwrap_or(".".to_string());
     let executable_name = env::args().nth(2).unwrap_or("bedrock_server".to_string());
     let sourcemap_resolver = SourcemapResolver::discover(Path::new(&cwd));
 
+    println!(
+        "{}[bds-enhancer]{} Starting {}...",
+        Color::Green,
+        Color::Reset,
+        executable_name
+    );
     let mut child = build_command(os, &cwd, &executable_name)
         .spawn()
         .expect("Failed to spawn process");

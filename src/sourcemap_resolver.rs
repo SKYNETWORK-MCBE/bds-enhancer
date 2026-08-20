@@ -2,9 +2,12 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use sourcemap::{DecodedMap, Token, decode_slice};
+use std::collections::HashMap;
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Component, Path, PathBuf};
+
+use crate::color::Color;
 
 const MAX_SOURCEMAP_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -44,6 +47,21 @@ impl SourcemapResolver {
                 &bds_dir.join("development_behavior_packs"),
                 Some(&references),
             ));
+        }
+
+        let mut packs: HashMap<&str, usize> = HashMap::new();
+        for map in &maps {
+            *packs.entry(&map.pack_name).or_default() += 1;
+        }
+
+        for (_, (pack_name, count)) in packs.iter().enumerate() {
+            println!(
+                "{}[bds-enhancer]{} Discovered script module: {}, maps: {}",
+                Color::Green,
+                Color::Reset,
+                pack_name,
+                count
+            );
         }
 
         Self { maps }
@@ -235,20 +253,78 @@ fn discover_pack(pack_dir: &Path, references: Option<&[PackIdentity]>) -> Vec<Sc
         .into_iter()
         .filter(|module| module.module_type == "script")
         .filter_map(|module| module.entry)
-        .filter_map(|entry| {
-            let normalized_entry = normalize_slashes(&entry);
-            let generated_path = safe_pack_path(pack_dir, Path::new(&normalized_entry))?;
+        .flat_map(|entry| {
+            discover_script_maps(pack_dir, &manifest.header.name, &normalize_slashes(&entry))
+        })
+        .collect()
+}
+
+fn discover_script_maps(pack_dir: &Path, pack_name: &str, entry: &str) -> Vec<ScriptMap> {
+    let Some(generated_path) = safe_pack_path(pack_dir, Path::new(entry)) else {
+        return Vec::new();
+    };
+    let mut generated_entries = vec![entry.to_owned()];
+
+    if let Some(script_dir) = generated_path.parent() {
+        discover_generated_entries(pack_dir, script_dir, &mut generated_entries);
+    }
+
+    generated_entries.sort_unstable();
+    generated_entries.dedup();
+    generated_entries
+        .into_iter()
+        .map(|generated_entry| {
+            let generated_path = pack_dir.join(&generated_entry);
             let mut map_path = generated_path.as_os_str().to_os_string();
             map_path.push(".map");
 
-            Some(ScriptMap {
-                pack_name: manifest.header.name.clone(),
+            ScriptMap {
+                pack_name: pack_name.to_owned(),
                 pack_dir: pack_dir.to_owned(),
-                generated_entry: normalized_entry,
+                generated_entry,
                 map_path: PathBuf::from(map_path),
-            })
+            }
         })
         .collect()
+}
+
+fn discover_generated_entries(pack_dir: &Path, directory: &Path, entries: &mut Vec<String>) {
+    let Ok(children) = fs::read_dir(directory) else {
+        return;
+    };
+
+    for child in children.flatten() {
+        let Ok(file_type) = child.file_type() else {
+            continue;
+        };
+        let path = child.path();
+        if file_type.is_dir() {
+            discover_generated_entries(pack_dir, &path, entries);
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(generated_name) = file_name.strip_suffix(".map") else {
+            continue;
+        };
+        if !(generated_name.ends_with(".js") || generated_name.ends_with(".mjs")) {
+            continue;
+        }
+
+        let generated_path = path.with_file_name(generated_name);
+        let Some(relative) = generated_path.strip_prefix(pack_dir).ok() else {
+            continue;
+        };
+        let Some(relative) = normalize_relative_path(relative) else {
+            continue;
+        };
+        entries.push(normalize_slashes(&relative.to_string_lossy()));
+    }
 }
 
 fn manifest_version(version: &Value) -> Option<String> {
@@ -502,6 +578,33 @@ mod tests {
         assert_eq!(
             resolver.resolve_log(&input),
             scripting_error("\n    at probe (src/main.ts:1) (main.js:4)")
+        );
+    }
+
+    #[test]
+    fn resolves_multiple_maps_in_the_same_script_module() {
+        let fixture = Fixture::new();
+        fixture.add_pack(
+            "system_behavior_packs",
+            "test",
+            "Test Pack",
+            "1.2.3",
+            Some(MAP),
+        );
+        let pack = fixture.root.join("system_behavior_packs/test");
+        let secondary_map = MAP
+            .replace("main.js", "aaa.js")
+            .replace("main.ts", "aaa.ts");
+        fs::write(pack.join("scripts/aaa.js.map"), secondary_map)
+            .expect("secondary map must be written");
+        let resolver = SourcemapResolver::discover(&fixture.root);
+        let input = scripting_error("\n    at main (main.js:4)\n    at secondary (aaa.js:4)");
+
+        assert_eq!(
+            resolver.resolve_log(&input),
+            scripting_error(
+                "\n    at main (src/main.ts:1) (main.js:4)\n    at secondary (src/aaa.ts:1) (aaa.js:4)"
+            )
         );
     }
 

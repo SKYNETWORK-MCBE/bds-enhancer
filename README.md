@@ -24,6 +24,27 @@ Please download and use it from [Releases](https://github.com/Lapis256/bds-enhan
 
 [Library Documentation](./lib/doc.md)
 
+## Script error sourcemaps
+
+When a ScriptAPI add-on emits an error, bds-enhancer automatically uses an adjacent source map such as `scripts/main.js.map` and adds the original source position to each resolvable stack frame.
+
+```text
+at callback (src/main.ts:8) (main.js:12)
+```
+
+The generated JavaScript position is retained for troubleshooting. BDS does not include generated columns in ScriptAPI stack frames, so the original line is resolved from the first mapping on that generated line.
+
+Active behavior packs are discovered as follows:
+
+- Every pack in `system_behavior_packs` is included because BDS applies these packs automatically.
+- Packs under the active world's `behavior_packs` directory are included only when their manifest UUID and version appear in `world_behavior_packs.json`.
+- Packs in `development_behavior_packs` are subject to the same active-world UUID and version check.
+- The BDS-level `behavior_packs` directory is internal and is not scanned.
+
+The active world is read from `level-name` in `server.properties`. Source maps are read when an error occurs, so updates made by a build watcher are picked up without restarting bds-enhancer.
+
+Source map resolution is best-effort. Missing, malformed, changing, oversized, ambiguous, or otherwise unresolvable maps never suppress the ScriptAPI error. The original stack frame is displayed unchanged and BDS continues running.
+
 ## Development
 
 How to run for debugging

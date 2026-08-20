@@ -2,6 +2,7 @@ pub mod action;
 pub mod color;
 pub mod consts;
 pub mod log_level;
+pub mod sourcemap_resolver;
 pub mod stream;
 
 use json::{self, object};
@@ -14,9 +15,10 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
 use action::Action;
-use color::Color;
+use color::{Color, ANSI_DIM, ANSI_NORMAL_INTENSITY};
 use consts::LOG_PREFIX;
 use log_level::LogLevel;
+use sourcemap_resolver::SourcemapResolver;
 use stream::LogDelimiterStream;
 
 lazy_static::lazy_static! {
@@ -60,6 +62,22 @@ fn parse_action(log: &str) -> Option<Action> {
 
     let json = caps.name("json").unwrap().as_str();
     serde_json::from_str(json).ok()?
+}
+
+enum IncomingLog<'a> {
+    Action(Action),
+    Output { level: LogLevel, original: &'a str },
+}
+
+fn classify_log(log: &str) -> IncomingLog<'_> {
+    if let Some(action) = parse_action(log) {
+        return IncomingLog::Action(action);
+    }
+
+    IncomingLog::Output {
+        level: get_log_level(log),
+        original: log.strip_prefix("NO LOG FILE! - ").unwrap_or(log),
+    }
 }
 
 fn handle_action(child_stdin: &Sender<String>, action: Action, command_status: &mut CommandStatus) {
@@ -150,45 +168,62 @@ fn custom_handler(log: &str, child_stdin: &Sender<String>) {
     }
 }
 
+fn forward_command_result(
+    log: &str,
+    child_stdin: &Sender<String>,
+    command_status: &mut CommandStatus,
+) {
+    if !command_status.waiting {
+        return;
+    }
+
+    for i in 0..(log.chars().count() / 1500 + 1) {
+        let result_tmp = log.chars().skip(i * 1500).take(1500).collect::<String>();
+        let result: json::JsonValue = object! {
+            "command" => command_status.command.clone(),
+            "result_message" => result_tmp,
+            "count" => i,
+            "end" => i == log.chars().count() / 1500,
+        };
+        execute_command(
+            child_stdin,
+            format!(
+                "scriptevent {} {} ",
+                command_status.scriptevent,
+                result.dump()
+            ),
+        );
+    }
+    command_status.waiting = false;
+}
+
 fn handle_child_stdout(
     child_stdin: Sender<String>,
     child_stdout: ChildStdout,
-    mut command_status: &mut CommandStatus,
+    command_status: &mut CommandStatus,
+    sourcemap_resolver: &SourcemapResolver,
 ) {
     let logs = LogDelimiterStream::new(child_stdout);
     let mut stdout = std::io::stdout();
 
     for log in logs {
-        if let Some(action) = parse_action(&log) {
-            handle_action(&child_stdin, action, &mut command_status);
-            continue;
-        }
-
-        let level = get_log_level(&log);
-
-        let log = log.strip_prefix("NO LOG FILE! - ").unwrap_or(&log);
-        if command_status.waiting {
-            for i in 0..(log.chars().count() / 1500 + 1) {
-                let result_tmp = log.chars().skip(i * 1500).take(1500).collect::<String>();
-                let result: json::JsonValue = object! {
-                    "command" => command_status.command.clone(),
-                    "result_message" => result_tmp,
-                    "count" => i,
-                    "end" => i == log.chars().count() / 1500,
-                };
-                execute_command(
-                    &child_stdin,
-                    format!(
-                        "scriptevent {} {} ",
-                        command_status.scriptevent,
-                        result.dump()
-                    ),
-                );
+        let (level, log) = match classify_log(&log) {
+            IncomingLog::Action(action) => {
+                handle_action(&child_stdin, action, command_status);
+                continue;
             }
-            command_status.waiting = false;
-        }
-        let _ = stdout.write(format!("{}{}{}\n", level.to_color(), log, Color::Reset).as_bytes());
+            IncomingLog::Output { level, original } => (level, original),
+        };
+        forward_command_result(log, &child_stdin, command_status);
+        let display_log = sourcemap_resolver.resolve_log_with_generated_style(
+            log,
+            ANSI_DIM,
+            ANSI_NORMAL_INTENSITY,
+        );
+        let _ = stdout
+            .write(format!("{}{}{}\n", level.to_color(), display_log, Color::Reset).as_bytes());
 
+        // Event detection must continue to use the untouched BDS log.
         custom_handler(log, &child_stdin);
     }
 }
@@ -202,9 +237,9 @@ fn execute_shell_command(command: &str, args: Vec<String>) -> Result<String, std
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            return Ok(stdout.to_string());
+            Ok(stdout.to_string())
         }
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     }
 }
 
@@ -231,13 +266,14 @@ fn main() {
     let os = env::consts::OS;
     let cwd = env::args().nth(1).unwrap_or(".".to_string());
     let executable_name = env::args().nth(2).unwrap_or("bedrock_server".to_string());
+    let sourcemap_resolver = SourcemapResolver::discover(Path::new(&cwd));
 
     let mut child = build_command(os, &cwd, &executable_name)
         .spawn()
         .expect("Failed to spawn process");
 
     let child_stdin = child.stdin.take().expect("Failed to get stdin");
-    let stdout = child.stdout.expect("Failed to get stdout");
+    let stdout = child.stdout.take().expect("Failed to get stdout");
 
     let (tx, rx) = channel::<String>();
     let tx2 = tx.clone();
@@ -250,11 +286,99 @@ fn main() {
         command: "".to_string(),
         scriptevent: "".to_string(),
     };
-    handle_child_stdout(tx2, stdout, &mut command_status);
+    handle_child_stdout(tx2, stdout, &mut command_status, &sourcemap_resolver);
+    let _ = child.wait();
 }
 
 struct CommandStatus {
     waiting: bool,
     command: String,
     scriptevent: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_logs_are_classified_before_console_rendering() {
+        let log = r#"[2026 INFO] [Scripting] bds_enhancer:{"action":"reload"}"#;
+
+        assert!(matches!(
+            classify_log(log),
+            IncomingLog::Action(Action::Reload)
+        ));
+    }
+
+    #[test]
+    fn output_logs_keep_the_original_text_and_level() {
+        let log = "NO LOG FILE! - [2026-08-19 16:00:00:000 ERROR] [Scripting] probe";
+
+        let (level, original) = match classify_log(log) {
+            IncomingLog::Output { level, original } => (level, original),
+            IncomingLog::Action(_) => panic!("ordinary logs must be rendered"),
+        };
+        assert_eq!(level.as_str(), "ERROR");
+        assert_eq!(
+            original,
+            "[2026-08-19 16:00:00:000 ERROR] [Scripting] probe"
+        );
+    }
+
+    #[test]
+    fn custom_handlers_still_receive_original_join_and_spawn_logs() {
+        let (sender, receiver) = channel();
+        custom_handler("Player connected: Steve, xuid: 123", &sender);
+        custom_handler(
+            "Player Spawned: Alex xuid: 456, pfid: test-platform",
+            &sender,
+        );
+
+        assert_eq!(
+            receiver.recv().expect("join event command must be emitted"),
+            "scriptevent system:on_join Steve|123\n"
+        );
+        assert_eq!(
+            receiver
+                .recv()
+                .expect("spawn event command must be emitted"),
+            "scriptevent system:on_spawn Alex|456|test-platform\n"
+        );
+    }
+
+    #[test]
+    fn command_results_forward_the_original_log() {
+        let (sender, receiver) = channel();
+        let mut status = CommandStatus {
+            waiting: true,
+            command: "list".to_owned(),
+            scriptevent: "bds_enhancer:result".to_owned(),
+        };
+        let original = "[2026-08-19 16:00:00:000 INFO] There are 0/10 players online";
+
+        forward_command_result(original, &sender, &mut status);
+
+        let command = receiver
+            .recv()
+            .expect("command result event must be emitted");
+        let payload = command
+            .strip_prefix("scriptevent bds_enhancer:result ")
+            .expect("result event prefix must be preserved")
+            .trim();
+        let payload: serde_json::Value =
+            serde_json::from_str(payload).expect("result payload must remain valid JSON");
+        assert_eq!(payload["command"], "list");
+        assert_eq!(payload["result_message"], original);
+        assert_eq!(payload["count"], 0);
+        assert_eq!(payload["end"], true);
+        assert!(!status.waiting);
+    }
+
+    #[test]
+    fn unrelated_logs_are_unchanged_by_an_empty_resolver() {
+        let resolver = SourcemapResolver::default();
+        let log = "[2026 INFO] Server started.";
+
+        assert_eq!(resolver.resolve_log(log), log);
+    }
 }

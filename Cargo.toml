@@ -2,6 +2,7 @@
 name = "bds_enhancer"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.88"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -9,10 +10,10 @@ serde_json = "1"
 regex = "1"
 lazy_static = "1.4.0"
 json = "0.12.4"
+sourcemap = "9.3.2"
 
 [profile.release]
 lto = true
 opt-level = "z"
 codegen-units = 1
 strip = true
-panic = "abort"

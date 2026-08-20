@@ -11,11 +11,11 @@ use std::env;
 use std::io::Write;
 use std::path::Path;
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 use action::Action;
-use color::{Color, ANSI_DIM, ANSI_NORMAL_INTENSITY};
+use color::{ANSI_DIM, ANSI_NORMAL_INTENSITY, Color};
 use consts::LOG_PREFIX;
 use log_level::LogLevel;
 use sourcemap_resolver::SourcemapResolver;

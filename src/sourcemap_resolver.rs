@@ -1,9 +1,9 @@
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
-use sourcemap::{decode_slice, DecodedMap, Token};
+use sourcemap::{DecodedMap, Token, decode_slice};
 use std::fs;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Component, Path, PathBuf};
 
 const MAX_SOURCEMAP_BYTES: u64 = 64 * 1024 * 1024;
@@ -348,10 +348,10 @@ fn read_stable_map(path: &Path) -> Option<Vec<u8>> {
     if before.len() != after.len() || bytes.len() as u64 != after.len() {
         return None;
     }
-    if let (Ok(before_modified), Ok(after_modified)) = (before.modified(), after.modified()) {
-        if before_modified != after_modified {
-            return None;
-        }
+    if let (Ok(before_modified), Ok(after_modified)) = (before.modified(), after.modified())
+        && before_modified != after_modified
+    {
+        return None;
     }
 
     Some(bytes)

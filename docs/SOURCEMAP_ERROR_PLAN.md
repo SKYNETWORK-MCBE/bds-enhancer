@@ -225,5 +225,6 @@ BDS 1.26.44.3 の観測ログには生成列がない。そのため初期版は
 - `cargo clippy --all-targets -- -D warnings`: 成功（allowなし）。
 - `cargo build --release`: 成功。
 - Rust 1.97.1への更新後、`rust-version = "1.88"`を追加し、互換用の`url`直接固定を削除した。
+- `cargo fix --edition`で互換性を確認後、crateをRust 2024 Editionへ移行した。
 - 仕上げ後の表示調整として、解決済みframeの生成JS位置だけANSI dimを適用した。
   `\x1b[22m`でintensityのみ戻すため、ERRORの赤色は維持する。未解決frameは装飾しない。

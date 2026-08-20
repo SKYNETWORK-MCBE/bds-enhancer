@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::io::{BufRead, BufReader};
 use std::process::ChildStdout;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -29,24 +29,26 @@ impl LogDelimiterStream {
         let mut read_buffer = BufReader::new(stdout);
         let buffer = Arc::new(Mutex::new(String::new()));
 
-        thread::spawn(move || loop {
-            let mut line = String::new();
-            let num_bytes = read_buffer.read_line(&mut line);
+        thread::spawn(move || {
+            loop {
+                let mut line = String::new();
+                let num_bytes = read_buffer.read_line(&mut line);
 
-            if let Ok(0) = num_bytes {
-                break;
+                if let Ok(0) = num_bytes {
+                    break;
+                }
+
+                let mut buffer_g = buffer.lock().unwrap();
+
+                if LOG_PREFIX_REGEX.is_match(&line) && !buffer_g.is_empty() {
+                    tx.send(remove_last_newline(&buffer_g).to_string()).unwrap();
+                    buffer_g.clear();
+                }
+
+                buffer_g.push_str(&line);
+
+                Self::handle_timeout(&buffer, &tx)
             }
-
-            let mut buffer_g = buffer.lock().unwrap();
-
-            if LOG_PREFIX_REGEX.is_match(&line) && !buffer_g.is_empty() {
-                tx.send(remove_last_newline(&buffer_g).to_string()).unwrap();
-                buffer_g.clear();
-            }
-
-            buffer_g.push_str(&line);
-
-            Self::handle_timeout(&buffer, &tx)
         });
 
         rx
